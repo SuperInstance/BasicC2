@@ -305,3 +305,98 @@ Friction (0 blockers, 3 majors, 7 minors) and what was done:
   near-silent — diagnostics live in state files; a logging pass
   is future work), F2 (DESIGN.md is written for this fleet's own
   operators and assumes that context — accepted as its purpose).
+
+## v1.1 — hardening (2026-10-27, branch `v11-hardening`)
+
+Closes the three structural limits the playtests found, plus the
+deployment gap the live run exposed. The rule for this release:
+**bookings and derive do not change** — same payload shapes, same
+ledger formats, same two-mint model, so every job record written
+by v1 still derives under v1.1. The only wire addition is one new
+frame type (`heartbeat`), which is never booked.
+
+### What changed
+
+1. **Heartbeat + reaping + newest-wins** — closes the root of F10
+   and the live run's zombie finding. Agents send a small
+   **signed** heartbeat frame after `--heartbeat-s` seconds of
+   send-silence (default 15), from a dedicated thread — the task
+   thread can block inside a `run` for up to `RUN_TIMEOUT_S`
+   (120 s), and a busy agent must not look dead. The controller
+   tracks last-seen per connection (any frame counts) and its
+   reaper closes connections silent past `--reap-s` (default 45)
+   and removes them from `online.json`. A handshake for an
+   agent_id that already has a connection **closes the older
+   socket**: the newer registration is by definition the live
+   one. A heartbeat with a bad signature closes the connection —
+   liveness claims require the enrolled key, like everything else
+   here. desk's controller-reachability WARNING stays as a second
+   layer for the case where the controller itself is the corpse.
+2. **Allowlist hot-reload** — closes Playtest 1's friction (the
+   ProArt agent refusing from a stale in-memory list). The agent
+   stats its allowlist file at each `run` dispatch and reloads on
+   mtime change. Failure policy is the security point: a
+   malformed new file **keeps the previous list** and logs why —
+   an edit never crashes the agent and never widens access by
+   failing to parse — and the kept mtime advances so one bad file
+   isn't re-parsed on every dispatch.
+3. **Logging (F9)** — `fleet/common.log()`: one timestamped line
+   per significant event on stdout (journal in service installs):
+   controller — connect, disconnect, zombie replacement, reap,
+   dispatch, result booked, refusal with reason; agent — connect,
+   job executed, refusal with reason, allowlist reloaded /
+   kept-after-error. Routine heartbeats are deliberately not
+   logged: a heartbeat is not an event; its absence is, and that
+   surfaces as a reap line.
+4. **systemd user units** — `fleet/systemd/fleet-controller
+   .service` and `fleet-agent@.service` (instance = agent name,
+   paths from `~/.config/fleet/agent-%i.conf`: CONFIG / STATE /
+   ALLOWLIST / PYTHONPATH / HEARTBEAT_S), plus
+   `fleet/install-services.sh`, which renders those confs for a
+   state dir + agent configs, installs the units, enables them
+   `--now`, and prints what it did. `Restart=on-failure` plus
+   newest-wins means a crashed agent rejoins and cleanly displaces
+   whatever it left behind.
+
+### Verification
+
+Suite: **9 passed** (5 pre-existing, unchanged, + 4 new), three
+consecutive runs. The new tests build their simulations honestly:
+the "zombie" is a raw socket that completes a real handshake with
+the enrolled key and then holds the connection silent — exactly
+what a half-dead agent is from the controller's side.
+
+The tests caught two real bugs on their first run:
+
+- **`close()` does not close a socket another thread is receiving
+  on** — no FIN is sent until the blocked recv returns, so the
+  reaper removed registrations while peers saw the sockets as
+  open forever. The controller now `shutdown()`s foreign
+  connections before closing them (`_close_conn`).
+- **`write_json`'s shared temp name raced** once v1.1 added
+  writers (reaper + serve threads updating `online.json`):
+  one writer's `replace()` consumed the other's temp file.
+  Temp names are now unique per writer. (The race existed in v1;
+  v1.1's concurrency made it fire.)
+
+### New limits, stated
+
+- **Liveness is connection liveness, not job progress.** A
+  heartbeat proves the agent process is up and its connection is
+  flowing — nothing about a specific job. A long `run` holds its
+  job for up to `RUN_TIMEOUT_S` with heartbeats flowing normally;
+  the desk learns the outcome only when the result (or refusal)
+  arrives. There is no progress channel, by design, in v1.1.
+- **Settled-or-not is final for a dispatch.** A job dispatched to
+  an agent that then dies (or is reaped) stays `dispatched` —
+  v1.1 does not re-dispatch it on reconnect, because re-booking a
+  second `:task` SEND for the same exchange would change the
+  record the derive reads. The operator re-sends as a new job,
+  exactly as in the v1 live run; the old job derives NOT-MINTED,
+  which is the truth of it.
+- **Partitions cost registrations.** Reaping is silence-based: a
+  network partition longer than `reap_s` drops the agent from
+  `online.json`; it re-registers when the partition heals. A
+  result sent into a dead connection during the partition is
+  booked on the agent's side only and derives NOT-MINTED — the
+  honest record of a result the desk never received.

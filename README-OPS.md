@@ -15,8 +15,35 @@ python3 -m fleet.controller --state ./ops-state        # long-running
 `ops-state/controller.json` (0600). Leave the controller running;
 it dispatches jobs and takes results. To run it detached:
 `setsid nohup python3 -m fleet.controller --state ./ops-state > controller.log 2>&1 < /dev/null &`
-(same pattern for agents). Nothing here is a system service yet —
-a reboot means restarting controller and agents by hand.
+(same pattern for agents). Or run both as services — next section.
+
+### Run them as services (systemd user units)
+
+```
+fleet/install-services.sh --repo "$HOME/basicc2" --state "$HOME/fleet-ops" \
+    --agent thor "$HOME/fleet-ops/enroll/thor.json" \
+                 "$HOME/fleet-ops/agent-state" \
+                 "$HOME/fleet-ops/allowlist.json"
+```
+
+The installer renders per-service config files into
+`~/.config/fleet/` (`controller.conf`, `agent-<name>.conf`),
+installs `fleet-controller.service` and the `fleet-agent@.service`
+template into `~/.config/systemd/user/`, and enables them with
+`--now`. One `--agent` group per agent that lives on this box.
+Logs go to the journal, one line per event (connect, dispatch,
+result, refusal, reap):
+
+```
+journalctl --user -u fleet-controller -u 'fleet-agent@*' -f
+```
+
+User units start at login; for boot survival — services up before
+anyone logs in, which is what a fleet box wants — enable linger:
+
+```
+loginctl enable-linger "$USER"
+```
 
 ## 2. Enroll each box (once per agent)
 
@@ -51,8 +78,10 @@ python3 -m fleet.agent --config thor.json --state ./agent-state --allowlist allo
 Two agents on one host (the natural trial setup): give each its
 own `--state` dir (its ledger lives there) and its own allowlist
 file if they differ. One agent per host needs nothing special.
-The agent reads its allowlist **once, at startup** — editing the
-file does nothing until the agent restarts.
+The allowlist is **hot-reloaded**: the agent stats the file on
+every dispatch and picks up edits with no restart. A malformed
+edit keeps the previous list in force (and is logged) — a bad
+file never crashes the agent and never widens what it will run.
 
 ## 3. Task the fleet
 
@@ -70,10 +99,14 @@ partial / refused, from the state files. **`show` prints what a
 job actually brought back** — per agent: exit code, the booked
 stdout preview, its sha256; for `ping`, the reported facts. That
 is the read path for results; the same data lives in
-`ops-state/jobs/<job_id>.json` if you want it raw. (One caution on
-`agents`: the online list is a file the controller maintains —
-if the controller itself is dead, `desk agents` now warns that
-the list may be stale rather than presenting it as live.)
+`ops-state/jobs/<job_id>.json` if you want it raw. (On `agents`:
+agents heartbeat every 15 s and the controller **reaps** any
+connection silent for 45 s — `--reap-s` on the controller,
+`--heartbeat-s` on the agent — and a reconnecting agent displaces
+its own older registration, so ONLINE now means recently-heard-
+from. If the controller itself is dead, its `online.json` still
+freezes, and `desk agents` warns that the list may be stale
+rather than presenting it as live.)
 
 ## 4. Prove a job happened
 
@@ -115,4 +148,6 @@ python3 -m pytest fleet/tests/ -q
 ```
 
 (in-process loop tests: minting, allowlist refusal, tampered
-signature refusal, unenrolled handshake refusal.)
+signature refusal, unenrolled handshake refusal — plus the v1.1
+liveness suite: zombie replacement, silent-connection reaping,
+heartbeat survival, allowlist hot-reload.)

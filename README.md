@@ -52,7 +52,7 @@ python3 -m fleet.desk --state ./ops-state derive <job_id>  # the receipt
 
 Python 3 stdlib only. No installs.
 
-## Status: v1, live on a real fleet
+## Status: v1.1, live on a real fleet
 
 Deployed 2026-10-27 on a three-box home fleet (controller on the
 hub box; agents on all three). First useful work — a census run
@@ -67,11 +67,15 @@ hub box; agents on all three). First useful work — a census run
 | GPU job | exit 0 | exit 0 | exit 0 (via WSL driver path) |
 
 **Known limits (found in playtests, recorded in DESIGN.md):**
-no heartbeat reaping yet — a half-dead agent registration can
-look ONLINE until a job goes missing; agents read their allowlist
-once at startup, so allowlist edits need an agent restart;
 controller is LAN-scoped (an internet relay is future work);
-agents run as plain processes, not system services.
+liveness is connection liveness — a job dispatched to an agent
+that dies before settling stays `dispatched` (re-send it as a new
+job), and a heartbeat proves the agent process is alive, not
+that a long-running job is making progress; the systemd units
+are user units, so boot survival needs linger enabled
+(`loginctl enable-linger`). The v1 limits the playtests found —
+zombie registrations, startup-only allowlists, silent logs,
+hand-started processes — are closed in v1.1; see DESIGN.md.
 
 ## Provenance
 
