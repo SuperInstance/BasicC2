@@ -34,3 +34,7 @@ original build brief guessed two of them wrong:
   `book_send`/`book_receive` with `ValueError` **before** anything is
   written — the SPEC numeric policy, enforced writer-side in v0.4.1.
   Fleet payloads therefore carry strings/ints/bools only.
+- `stitch.crypto.ed25519.Key`: `public_bytes`, `secret_bytes`, and
+  `identity` are **properties**, not methods (learned by test failure,
+  2026-10-27: `'bytes' object is not callable`). `sign`/`verify` are
+  methods; `Key.generate()` / `Key.from_secret()` are classmethods.

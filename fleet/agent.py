@@ -148,7 +148,7 @@ class Agent:
         common.append_booking(
             self.ledger_path, self.agent_id, stitch.book_receive,
             xchg=f"{job}:task", peer=common.CONTROLLER_ID,
-            payload=payload, secret_key=self.key.secret_bytes())
+            payload=payload, secret_key=self.key.secret_bytes)
         # 4. Execute the named op.
         if kind == "ping":
             result = self._exec_ping()
@@ -158,7 +158,7 @@ class Agent:
         common.append_booking(
             self.ledger_path, self.agent_id, stitch.book_send,
             xchg=f"{job}:result", peer=common.CONTROLLER_ID,
-            payload=result, secret_key=self.key.secret_bytes())
+            payload=result, secret_key=self.key.secret_bytes)
         ledger_b64 = base64.b64encode(
             self.ledger_path.read_bytes()).decode("ascii")
         common.send_frame(sock, {

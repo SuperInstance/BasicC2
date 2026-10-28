@@ -54,14 +54,14 @@ def cmd_init(paths: Paths, host: str, port: int) -> None:
         "identity": common.CONTROLLER_ID,
         "host": host,
         "port": port,
-        "pubkey_hex": key.public_bytes().hex(),
-        "secret_hex": key.secret_bytes().hex(),
+        "pubkey_hex": key.public_bytes.hex(),
+        "secret_hex": key.secret_bytes.hex(),
         "created_utc": _utc_now(),
     })
     if not paths.registry_file.exists():
         common.write_json(paths.registry_file, {})
     print(f"initialized desk state at {paths.root}")
-    print(f"controller pubkey: {key.public_bytes().hex()}")
+    print(f"controller pubkey: {key.public_bytes.hex()}")
     print(f"controller will bind {host}:{port}")
 
 
@@ -76,7 +76,7 @@ def cmd_enroll(paths: Paths, agent_id: str, host=None, port=None) -> Path:
                          f"(refusing to re-key it implicitly)")
     key = Key.generate()
     registry[agent_id] = {
-        "pubkey_hex": key.public_bytes().hex(),
+        "pubkey_hex": key.public_bytes.hex(),
         "enrolled_utc": _utc_now(),
     }
     common.write_json(paths.registry_file, registry)
@@ -84,15 +84,15 @@ def cmd_enroll(paths: Paths, agent_id: str, host=None, port=None) -> Path:
                            else "127.0.0.1")
     bundle = {
         "agent_id": agent_id,
-        "pubkey_hex": key.public_bytes().hex(),
-        "secret_hex": key.secret_bytes().hex(),
+        "pubkey_hex": key.public_bytes.hex(),
+        "secret_hex": key.secret_bytes.hex(),
         "controller_pubkey_hex": cfg["pubkey_hex"],
         "controller": {"host": bundle_host,
                        "port": port or cfg["port"]},
     }
     bundle_path = paths.bundle_file(agent_id)
     _write_secret_file(bundle_path, bundle)
-    print(f"enrolled {agent_id}: pubkey {key.public_bytes().hex()}")
+    print(f"enrolled {agent_id}: pubkey {key.public_bytes.hex()}")
     print(f"bundle written to {bundle_path} — carry it to the box "
           f"(it contains the agent's secret key)")
     return bundle_path

@@ -141,7 +141,57 @@ ops-state/        (default --state) controller keys, registry, inbox,
                   job status, controller ledger, agent ledger copies
 ```
 
-## Verification
+## Verification (2026-10-27)
 
-_(Filled in as the tests and the two-process smoke run — see the
-"tests+smoke" commit.)_
+**Unit/integration tests** — `fleet/tests/test_loop.py`, 5 tests, all
+in-process on ephemeral ports with temp state (real controller
+thread, real agent thread, real keys, real ledgers):
+
+```
+.....                                                                    [100%]
+5 passed in 1.09s
+```
+
+Coverage: ping job mints both exchanges with audits PASS;
+allowlisted `run` (`echo hi`) exits 0 with the stdout hash checked;
+non-allowlisted `run` is refused, books nothing, and derives
+NOT-MINTED; an unenrolled hello is closed without a challenge; a
+task frame whose payload was altered after signing is refused
+(`bad_signature`, nothing booked, nothing executed) and the same
+agent then serves a correctly signed task — the refusal is about
+the signature, not a wedged agent.
+
+One API fact was learned by failure during the build and is recorded
+in `vendor/VENDOR.md`: stitch's `Key.public_bytes` / `secret_bytes`
+/ `identity` are properties, not methods.
+
+**Two-process smoke** — controller and agent as separate OS
+processes on localhost (system Python, no test harness), one ping
+job, derived afterwards:
+
+```
+--- desk agents ---
+smokebox         ONLINE  127.0.0.1:54118 since 2026-10-28T02:43:38.740177+00:00 pubkey 9692a77dac0d43e6…
+--- sent ping job: job-20261028T024340-cd8c24 ---
+--- desk jobs ---
+job-20261028T024340-cd8c24   target=smokebox   kind=ping  status=done results from: smokebox
+--- desk derive job-20261028T024340-cd8c24 ---
+derive job-20261028T024340-cd8c24 (from the ledgers alone):
+  agent smokebox:
+    audit:  controller PASS (2 entries), agent PASS (2 entries)
+    job-20261028T024340-cd8c24:task   MINTED     (agreed)
+    job-20261028T024340-cd8c24:result MINTED     (agreed)
+  verdict: COMPLETE — both exchanges minted
+derive exit: 0
+```
+
+**Known v1 limits, stated rather than smoothed over:** result frames
+themselves are not transport-signed (their authenticity rests on the
+signed bookings inside the agent ledger the frame carries — a frame
+whose payload disagrees with the booking fails `derive`); the
+controller books a result RECEIVE for whatever arrives on an
+authenticated connection, so a compromised agent key can mint false
+results *for its own jobs* — key custody is the security boundary,
+as designed; target `all` dispatches only to agents that connect,
+and a job whose target never connects stays `queued` forever (no
+expiry in v1).

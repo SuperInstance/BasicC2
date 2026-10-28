@@ -251,7 +251,7 @@ class Controller:
                 self.paths.controller_ledger, common.CONTROLLER_ID,
                 stitch.book_send, xchg=f"{job_id}:task", peer=agent_id,
                 payload=task_payload,
-                secret_key=self.key.secret_bytes())
+                secret_key=self.key.secret_bytes)
         frame = common.sign_frame(self.key, {
             "type": "task", "job": job_id, "payload": task_payload})
         try:
@@ -307,7 +307,7 @@ class Controller:
                 self.paths.controller_ledger, common.CONTROLLER_ID,
                 stitch.book_receive, xchg=f"{job_id}:result",
                 peer=agent_id, payload=payload,
-                secret_key=self.key.secret_bytes())
+                secret_key=self.key.secret_bytes)
 
         def mark(job: dict) -> dict:
             job.setdefault("results", {})[agent_id] = payload
