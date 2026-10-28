@@ -1,0 +1,17 @@
+[Unit]
+Description=Fleet agent %i (BasicC2 fleet tasking system)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# CONFIG / STATE / ALLOWLIST / PYTHONPATH / HEARTBEAT_S are rendered
+# by fleet/install-services.sh into this per-instance EnvironmentFile
+# (the instance name %i is the agent's enrolled name).
+EnvironmentFile=%h/.config/fleet/agent-%i.conf
+ExecStart=/usr/bin/python3 -m fleet.agent --config ${CONFIG} --state ${STATE} --allowlist ${ALLOWLIST} --heartbeat-s ${HEARTBEAT_S}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

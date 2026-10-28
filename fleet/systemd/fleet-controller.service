@@ -1,0 +1,16 @@
+[Unit]
+Description=Fleet controller (BasicC2 fleet tasking system)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# STATE / PYTHONPATH / REAP_S are rendered by fleet/install-services.sh
+# into this EnvironmentFile.
+EnvironmentFile=%h/.config/fleet/controller.conf
+ExecStart=/usr/bin/python3 -m fleet.controller --state ${STATE} --reap-s ${REAP_S}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
