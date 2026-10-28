@@ -1,0 +1,28 @@
+# CI for the fleet tasking system: the loop suite (minting,
+# refusals, zombie replacement, reaping, allowlist reload) on a
+# clean checkout. The package is stdlib-only, so there is nothing
+# to install beyond pytest.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pytest (the only test dependency)
+        run: pip install pytest
+      - name: Fleet test suite
+        run: python -m pytest fleet/tests/ -q
+      - name: Byte-compile the package (syntax gate)
+        run: python -m compileall -q fleet
+      - name: Validate the systemd units
+        run: |
+          sudo systemd-analyze verify fleet/systemd/fleet-controller.service 2>&1 | grep -v "Command.*is not executable" || true

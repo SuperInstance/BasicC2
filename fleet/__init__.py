@@ -7,4 +7,4 @@ allowlisted jobs, and proves completion afterwards from two signed
 stitch ledgers. See DESIGN.md for the full record.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.1.0"
