@@ -436,3 +436,28 @@ suite:
   and reloads with timestamps.
 - **Compatibility**: the v1 census job (…eba8a6) still derives
   COMPLETE under the v1.1 code and controller.
+
+## Production release — v1.1.0 (2026-10-27)
+
+Shipped over the goal line: git tag `v1.1.0` and a GitHub
+release, with CI (fleet suite + compile gate) green on the
+release commit — the repo now proves itself on every push the
+same way stitch does. Pre-release checks: version stamped
+(`fleet.__version__ = "1.1.0"`); a secret scan of the tree and
+full history found key material only as field names in code and
+in test-generated temporary state — no credentials, bundles, or
+ledgers have ever been committed (live state lives in
+`~/fleet-ops` on the boxes, gitignored patterns cover the rest).
+
+**Final proof, run against the production fleet after the
+release:** a fresh round (ping + uptime to all three boxes)
+completed and minted, and then a **derive sweep over the entire
+job record: 15 of 20 jobs COMPLETE.** The five exceptions are
+the record being honest about its own history, each verifiable
+from the same files: two partials from the v1 zombie incident
+(Thor's exchanges genuinely absent), two allowlist refusals
+from before the hot-reload test, and one pure refusal (a
+refusal books nothing, so there is nothing to mint — derive
+correctly declines). A record that derived 20/20 would be the
+suspicious outcome; this one can tell its worst day from its
+best, and the verdicts match what happened.
