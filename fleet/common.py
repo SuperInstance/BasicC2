@@ -218,9 +218,16 @@ def read_json(path: Path, default=None):
 
 def write_json(path: Path, obj) -> None:
     """Write JSON via a temp file + rename, so a concurrent reader
-    never sees a half-written state file."""
+    never sees a half-written state file. The temp name is unique
+    per writer (pid + thread): v1.1 has several threads writing
+    online.json (serve threads, the reaper), and a shared temp name
+    turned that into a replace() race — two writers, one temp file,
+    and the loser's rename raising FileNotFoundError."""
+    import os
+    import threading
     path = Path(path)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp = path.with_name(
+        f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
     tmp.write_text(json.dumps(obj, indent=2, sort_keys=True) + "\n",
                    encoding="utf-8")
     tmp.replace(path)

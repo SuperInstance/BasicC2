@@ -79,6 +79,23 @@ class Controller:
     def _log(self, msg: str) -> None:
         common.log("controller", msg)
 
+    @staticmethod
+    def _close_conn(conn: socket.socket) -> None:
+        """Close a connection from a thread that doesn't own its
+        recv loop. shutdown() first: a bare close() does not wake a
+        recv blocked in another thread, and the FIN isn't sent until
+        that recv releases the fd — the peer would see the socket as
+        open indefinitely. (Found by the v1.1 tests: reaping removed
+        the registration but the zombie never saw the close.)"""
+        try:
+            conn.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        try:
+            conn.close()
+        except OSError:
+            pass
+
     # -- registry --------------------------------------------------------
 
     def _registry(self) -> dict:
@@ -116,10 +133,7 @@ class Controller:
             self.online.clear()
             self.last_seen.clear()
         for c in conns:
-            try:
-                c.close()
-            except OSError:
-                pass
+            self._close_conn(c)
         self._write_online()
 
     # -- connection handling -------------------------------------------------
@@ -160,10 +174,7 @@ class Controller:
                 self._log(f"agent {agent_id} reconnected from "
                           f"{addr[0]}:{addr[1]} — closing its older "
                           f"connection (zombie replacement)")
-                try:
-                    old.close()
-                except OSError:
-                    pass
+                self._close_conn(old)
             else:
                 self._log(f"agent {agent_id} connected from "
                           f"{addr[0]}:{addr[1]}")
@@ -275,10 +286,7 @@ class Controller:
                 self._log(f"agent {agent_id} reaped: silent for "
                           f"{silent_for:.1f}s (budget {self.reap_s:g}s) "
                           f"— connection closed, removed from online")
-                try:
-                    conn.close()
-                except OSError:
-                    pass
+                self._close_conn(conn)
             if dead:
                 self._write_online()
 
@@ -385,10 +393,11 @@ class Controller:
         if isinstance(ledger_b64, str):
             try:
                 data = base64.b64decode(ledger_b64, validate=True)
-                tmp = self.paths.agent_ledger_copy(agent_id).with_suffix(
-                    ".jsonl.tmp")
+                dest = self.paths.agent_ledger_copy(agent_id)
+                tmp = dest.with_name(
+                    f"{dest.name}.{threading.get_ident()}.tmp")
                 tmp.write_bytes(data)
-                tmp.replace(self.paths.agent_ledger_copy(agent_id))
+                tmp.replace(dest)
             except (binascii.Error, OSError):
                 pass  # a corrupt copy simply won't mint at derive time
         # Book the mirror RECEIVE for exactly what arrived. If the
