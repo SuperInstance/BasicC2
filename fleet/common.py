@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import struct
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # --- vendored stitch ---------------------------------------------------
@@ -28,6 +29,7 @@ __all__ = [
     "stitch", "Key", "CONTROLLER_ID", "DEFAULT_PORT", "MAX_FRAME",
     "canonical_json", "send_frame", "recv_frame", "sign_frame",
     "verify_frame", "Paths", "read_json", "write_json", "append_booking",
+    "log",
 ]
 
 #: Tenant identity the controller books under in its stitch ledger.
@@ -42,6 +44,21 @@ DEFAULT_PORT = 5000
 MAX_FRAME = 64 * 1024 * 1024
 
 _FRAME = struct.Struct(">I")  # 4-byte big-endian length prefix
+
+
+# --- logging -----------------------------------------------------------------
+
+def log(who: str, msg: str) -> None:
+    """
+    One timestamped line to stdout per significant event (v1.1, F9).
+    Deployments redirect stdout to a log file or the journal, so this
+    is the whole logging system: no files, no levels, no rotation of
+    our own. Routine traffic (individual heartbeats) is deliberately
+    NOT logged — a heartbeat's absence is the event, and it surfaces
+    as a reap line on the controller.
+    """
+    ts = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    print(f"{ts} {who} {msg}", flush=True)
 
 
 # --- canonical JSON ------------------------------------------------------
