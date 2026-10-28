@@ -400,3 +400,39 @@ The tests caught two real bugs on their first run:
   result sent into a dead connection during the partition is
   booked on the agent's side only and derives NOT-MINTED — the
   honest record of a result the desk never received.
+
+### v1.1 live deployment (2026-10-27, Muse)
+
+v1.1 (dde3ce2) is deployed: controller and all three agents now
+run as **systemd user services** (linger enabled on all three
+boxes, so they survive reboots and logins). The migration flushed
+out one operational fossil: the original nohup controller from
+the first deployment was still holding port 21212 — the systemd
+unit flap-looped on "Address already in use" until the fossil
+was killed by exact pid (two earlier `pkill` attempts in this
+project's history hit wrapper shells instead of daemons; the
+lesson is recorded here: kill daemons by verified pid, never by
+pattern). A duplicate hand-started agent per box was cleaned up
+the same way; newest-connection-wins kept the registry sane
+throughout the churn.
+
+Each v1.1 property was then verified **live**, not from the test
+suite:
+
+- **Reaping**: the Orin agent was frozen with SIGSTOP (a true
+  zombie — socket open, heartbeats gone). The controller reaped
+  it at **45.3 s** of silence ("connection closed, removed from
+  online"), the desk showed it offline truthfully, and on
+  SIGCONT the agent reconnected and completed a ping that
+  minted. The exact failure that hid for a whole job round in
+  v1 now surfaces in under a minute, in the journal, by itself.
+- **Allowlist reload**: `whoami` was refused by the Thor agent;
+  the prefix was appended to the file — no restart — and the
+  resent job completed (`caseydigennaro`), with the journal
+  recording "allowlist reloaded: 9 prefixes". The test entry
+  was removed again afterwards; the reload picked that up too.
+- **Logging**: controller and agent journals now narrate
+  connects, zombie replacements, reaps, dispatches, refusals,
+  and reloads with timestamps.
+- **Compatibility**: the v1 census job (…eba8a6) still derives
+  COMPLETE under the v1.1 code and controller.
