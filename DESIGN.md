@@ -195,3 +195,35 @@ results *for its own jobs* — key custody is the security boundary,
 as designed; target `all` dispatches only to agents that connect,
 and a job whose target never connects stays `queued` forever (no
 expiry in v1).
+
+## Live deployment (2026-10-27, Muse — first real run)
+
+The v1 system is **deployed and working** on the home fleet:
+
+- **Controller** on the Thor (`~/fleet-ops`, bind 0.0.0.0:21212),
+  pubkey `505ddc47…`. **Agents** enrolled and connected from all
+  three boxes: thor `69a92c47…`, orin `64e23088…`, proart
+  `851fcb94…` — each holding its own key, connecting out to the
+  controller, exactly the topology in this document.
+- **First fleet-wide jobs** (2026-10-28 ~03:06 UTC): `ping` to all
+  (job-…eba8a6) and `run nvidia-smi` to all (job-…ab6000). Both
+  completed from all three agents, and `desk derive` reports, per
+  agent, **both exchanges MINTED and both audits PASS** (controller
+  ledger 24 entries at derive time). The receipts were derived from
+  the stored ledgers alone, after the fact — not from live claims.
+
+Two honest findings from the run, recorded as v1 limits:
+
+1. **Zombie registration.** The thor agent's first registration
+   showed ONLINE but silently never processed dispatches (its
+   ledger stayed at genesis while the controller booked SENDs into
+   the void). Restarting the agent fixed it. v1 has no heartbeat
+   reaping: a half-dead registration looks exactly like a live one
+   until a job goes missing. The jobs record is what exposed it —
+   status showed results from two agents, not three.
+2. **The record keeps failures faithfully.** On the ProArt (WSL),
+   `nvidia-smi` is not on the agent's PATH, so the run job minted
+   with **exit 127** — delivery and result both agreed, recording
+   a failure exactly as it happened. (thor and orin exited 0.)
+   A receipt system that only mints successes would be worthless;
+   this one mints what occurred.
