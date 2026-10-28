@@ -100,12 +100,37 @@ def cmd_enroll(paths: Paths, agent_id: str, host=None, port=None) -> Path:
 
 # --- status ------------------------------------------------------------------
 
+def _controller_reachable(paths: Paths) -> bool | None:
+    """True/False when the controller answers a TCP connect at its
+    configured address; None when we cannot tell (no config). The
+    online list is a file the controller maintains — when the
+    controller is dead the file freezes, so `agents` must not
+    present it as live truth (playtest finding F10)."""
+    import socket
+    cfg = common.read_json(paths.controller_file)
+    if not cfg:
+        return None
+    host = cfg.get("host") or "127.0.0.1"
+    if host in ("0.0.0.0", "::"):
+        host = "127.0.0.1"
+    try:
+        with socket.create_connection((host, int(cfg["port"])), timeout=2):
+            return True
+    except OSError:
+        return False
+
+
 def cmd_agents(paths: Paths) -> None:
     registry = common.read_json(paths.registry_file, {}) or {}
     online = common.read_json(paths.online_file, {}) or {}
     if not registry:
         print("no agents enrolled")
         return
+    if _controller_reachable(paths) is False:
+        cfg = common.read_json(paths.controller_file, {}) or {}
+        print(f"WARNING: controller not reachable at "
+              f"{cfg.get('host')}:{cfg.get('port')} — the online list "
+              f"below is the last state it wrote and may be stale.")
     for agent_id in sorted(registry):
         info = online.get(agent_id)
         state = (f"ONLINE  {info['addr']} since {info['since']}"
@@ -132,8 +157,43 @@ def cmd_jobs(paths: Paths) -> None:
         if job.get("refused"):
             extra += (f" refused by: "
                       f"{', '.join(sorted(job['refused']))}")
+        argv = (spec.get("args") or {}).get("argv")
+        argv_s = ""
+        if argv:
+            joined = " ".join(argv)
+            argv_s = f" argv={joined[:44]}{'…' if len(joined) > 44 else ''}"
         print(f"{spec['job_id']:<28} target={spec.get('target'):<10} "
-              f"kind={spec.get('kind'):<5} status={status}{extra}")
+              f"kind={spec.get('kind'):<5} status={status}{extra}{argv_s}")
+
+
+def cmd_show(paths: Paths, job_id: str) -> None:
+    """Print what a job actually brought back (playtest finding F5:
+    status and verdicts are not the answers — the results are)."""
+    spec = common.read_json(paths.inbox_file(job_id))
+    if spec is None:
+        raise SystemExit(f"no such job: {job_id}")
+    job = common.read_json(paths.job_file(job_id), {}) or {}
+    argv = (spec.get("args") or {}).get("argv")
+    print(f"{job_id}  target={spec.get('target')} kind={spec.get('kind')}"
+          + (f" argv={' '.join(argv)}" if argv else "")
+          + f"  status={job.get('status', 'queued')}")
+    for agent_id in sorted(job.get("refused") or {}):
+        print(f"  {agent_id}: REFUSED ({job['refused'][agent_id]})")
+    for agent_id in sorted(job.get("results") or {}):
+        r = job["results"][agent_id]
+        print(f"  {agent_id}:")
+        if spec.get("kind") == "ping":
+            for k in sorted(r):
+                print(f"    {k}: {r[k]}")
+        else:
+            print(f"    exit: {r.get('exit')}")
+            if r.get("stdout_sha256"):
+                print(f"    stdout sha256: {r['stdout_sha256'][:16]}…")
+            prev = (r.get("stdout_preview") or "").rstrip()
+            if prev:
+                print("    stdout (preview, first 512 chars booked):")
+                for line in prev.splitlines():
+                    print(f"      {line}")
 
 
 # --- send ----------------------------------------------------------------------
@@ -254,6 +314,9 @@ def main(argv=None) -> int:
 
     sub.add_parser("jobs", help="job status from state files")
 
+    p = sub.add_parser("show", help="print a job's results (what came back)")
+    p.add_argument("job_id")
+
     p = sub.add_parser("derive", help="derive a job's completion from the ledgers")
     p.add_argument("job_id")
 
@@ -282,6 +345,8 @@ def main(argv=None) -> int:
         cmd_send(paths, args.target, args.kind, job_args)
     elif args.cmd == "jobs":
         cmd_jobs(paths)
+    elif args.cmd == "show":
+        cmd_show(paths, args.job_id)
     elif args.cmd == "derive":
         return cmd_derive(paths, args.job_id)
     return 0

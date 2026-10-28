@@ -13,13 +13,22 @@ python3 -m fleet.controller --state ./ops-state        # long-running
 
 `init` generates the controller keypair into
 `ops-state/controller.json` (0600). Leave the controller running;
-it dispatches jobs and takes results.
+it dispatches jobs and takes results. To run it detached:
+`setsid nohup python3 -m fleet.controller --state ./ops-state > controller.log 2>&1 < /dev/null &`
+(same pattern for agents). Nothing here is a system service yet —
+a reboot means restarting controller and agents by hand.
 
 ## 2. Enroll each box (once per agent)
 
 ```
 python3 -m fleet.desk --state ./ops-state enroll thor --host <controller-LAN-address> --port 5000
 ```
+
+`--host`/`--port` here are **the address the agent will dial** to
+reach the controller — the controller's LAN IP for an agent on
+another box, `127.0.0.1` only when the agent lives on the
+controller's own host. (The address in `init` is the bind address;
+`0.0.0.0` there is normal.)
 
 This registers thor's new public key and writes
 `ops-state/enroll/thor.json` — the **enroll bundle**, which contains
@@ -39,6 +48,12 @@ Then start the agent (it reconnects on its own, forever):
 python3 -m fleet.agent --config thor.json --state ./agent-state --allowlist allowlist.json
 ```
 
+Two agents on one host (the natural trial setup): give each its
+own `--state` dir (its ledger lives there) and its own allowlist
+file if they differ. One agent per host needs nothing special.
+The agent reads its allowlist **once, at startup** — editing the
+file does nothing until the agent restarts.
+
 ## 3. Task the fleet
 
 ```
@@ -47,11 +62,18 @@ python3 -m fleet.desk --state ./ops-state send --target thor --kind ping
 python3 -m fleet.desk --state ./ops-state send --target thor --kind run -- echo hi
 python3 -m fleet.desk --state ./ops-state send --target all  --kind ping
 python3 -m fleet.desk --state ./ops-state jobs
+python3 -m fleet.desk --state ./ops-state show <job_id>
 ```
 
 `send` prints the job id. `jobs` shows queued / dispatched / done /
-partial / refused, from the state files — no need to ask the
-controller process anything.
+partial / refused, from the state files. **`show` prints what a
+job actually brought back** — per agent: exit code, the booked
+stdout preview, its sha256; for `ping`, the reported facts. That
+is the read path for results; the same data lives in
+`ops-state/jobs/<job_id>.json` if you want it raw. (One caution on
+`agents`: the online list is a file the controller maintains —
+if the controller itself is dead, `desk agents` now warns that
+the list may be stale rather than presenting it as live.)
 
 ## 4. Prove a job happened
 
@@ -66,6 +88,13 @@ code 0 only when everything is MINTED and both audits PASS. This is
 the receipt; a job the desk cannot derive did not, as far as the
 record is concerned, happen.
 
+What a `run` result books: the argv, the exit code, the **sha256
+of the full stdout**, and a **512-character preview** of it. The
+preview is for reading; the hash is for proof — if you later hold
+the full output (from the box itself), its hash either matches
+the booked one or it isn't what the agent produced. Full stdout
+is deliberately not shipped or stored by the desk in v1.
+
 ## State layout (`--state`, default `./ops-state`)
 
 | path | what |
@@ -75,7 +104,7 @@ record is concerned, happen.
 | `online.json` | who's connected right now (controller-maintained) |
 | `enroll/<agent>.json` | enroll bundles (0600, contain secret keys) |
 | `inbox/<job_id>.json` | queued jobs (`desk send` writes these) |
-| `jobs/<job_id>.json` | per-job status (controller-maintained) |
+| `jobs/<job_id>.json` | per-job status **and results** (controller-maintained; read via `desk show`) |
 | `ledgers/controller.jsonl` | the controller's stitch ledger |
 | `agent-ledgers/<agent_id>.jsonl` | latest ledger copy per agent |
 

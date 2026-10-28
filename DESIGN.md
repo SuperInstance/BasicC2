@@ -227,3 +227,81 @@ Two honest findings from the run, recorded as v1 limits:
    a failure exactly as it happened. (thor and orin exited 0.)
    A receipt system that only mints successes would be worthless;
    this one mints what occurred.
+
+## Playtests (2026-10-27) — outside use, on purpose
+
+Casey's standard for this project: playtested **from the
+outside**, with honest results — which includes having some good
+ones. Two playtests were run the same evening as the deployment.
+
+### Playtest 1 — the operator uses it for real work (Muse)
+
+Task: a **fleet census** through the system itself — ping,
+hostname, kernel, uptime, disk, memory, and a GPU probe to all
+three boxes, every figure assembled afterwards from the job
+records. Result: **8/8 census jobs derive COMPLETE** (both
+exchanges minted, audits pass), and the census is a genuinely
+useful artifact — it shows the hub box working hard (load
+5.5–8.9, 81/126 GB RAM) against two near-idle satellites, and a
+root-disk picture (69% / 5% / 9%) no single box could have
+reported about the others.
+
+Friction found by use, not reading:
+- The ProArt GPU probe first minted at exit 127 (WSL keeps
+  `nvidia-smi` at `/usr/lib/wsl/lib/nvidia-smi`), and then —
+  after the allowlist file was updated — the agent kept
+  **refusing** the new entries: agents read the allowlist once
+  at startup, and a stale in-memory copy is indistinguishable
+  from policy. Fixed operationally (agent restarts) and now
+  documented in README-OPS; a reload signal is future work.
+- Operator error, owned here rather than in the product's
+  ledger: a careless `pkill` pattern from the operator's shell
+  killed an agent mid-playtest. The system's part of the story
+  is creditable — the desk showed the agent offline truthfully
+  and no job was marked done while it was down.
+
+### Playtest 2 — cold, zero-shot (independent agent, docs only)
+
+A fresh operator with nothing but this repo (README.md,
+README-OPS.md, DESIGN.md), in a sandbox: desk + controller + two
+agents on one host, same census mission, plus unscripted probes.
+Full log: `PLAYTEST-2026-10-27.md`. Headlines:
+
+- **First command → first MINTED derive: 85 seconds**, docs
+  reading included. Census 8/8 done, 8/8 derived COMPLETE.
+- **Resilience probes all passed**: a non-allowlisted job was
+  refused and provably booked nothing; a job queued to a
+  *stopped* agent **drained on reconnect** and minted; the
+  controller was killed mid-flight — agents reconnected in
+  ~10 s, the outage-queued job completed, and pre-restart jobs
+  still derived. The receipts outlived every process involved.
+- **Verdict, verbatim: "Useful, not theatre — with a misleading
+  front door."**
+
+Friction (0 blockers, 3 majors, 7 minors) and what was done:
+
+- **F1 (major): README.md was the upstream toy's manual** — it
+  taught the old insecure tool and never mentioned `fleet/`.
+  FIXED: README.md rewritten as this project's front door;
+  upstream's preserved as UPSTREAM.md.
+- **F5 (major): no documented way to see a job's output** —
+  status and verdicts, but the answers lived in a state file
+  described as "per-job status." FIXED: new **`desk show
+  <job_id>`** prints per-agent results (exit, booked preview,
+  sha256; ping facts), and README-OPS documents the read path
+  and the result payload's shape (512-char preview + full-output
+  sha256; full stdout deliberately not shipped in v1 — F7).
+- **F10 (major): `desk agents` lied with the controller dead**,
+  reporting ONLINE from a frozen `online.json`. FIXED as a
+  mitigation: `agents` now probes the controller's address and
+  prints a staleness WARNING when it cannot be reached. The
+  underlying gap (no heartbeat/reaping) remains a v1 limit.
+- Minors, fixed in docs: F3 (`enroll --host` is the address the
+  *agent dials* — now stated), F4 (controller/agent
+  backgrounding pattern — now in README-OPS), F6 (`desk jobs`
+  now shows argv for run jobs), F8 (two agents on one host need
+  per-agent `--state` dirs — now documented).
+- Minors, recorded not fixed: F9 (controller/agent logs are
+  near-silent — diagnostics live in state files; a logging pass
+  is future work), F2 (DESIGN.md is written for this fleet's own
+  operators and assumes that context — accepted as its purpose).
