@@ -461,3 +461,16 @@ refusal books nothing, so there is nothing to mint — derive
 correctly declines). A record that derived 20/20 would be the
 suspicious outcome; this one can tell its worst day from its
 best, and the verdicts match what happened.
+
+### Release verification (2026-10-27, after the tag)
+
+The released artifact itself — not the working tree — was
+tested cold: `git clone --branch v1.1.0` from GitHub into a
+clean directory; the suite passes there (9/9, matching CI on
+the release commit); and the full operator loop was run from
+the tag following only README-OPS: init, controller, enroll
+two agents, fleet ping + hostname jobs — **both derived
+COMPLETE**, and `desk show` printed the real outputs. Together
+with the production deployment (running this release's code,
+final proof + 15/20 sweep above), the release is verified at
+all three levels: unit suite, cold artifact, live fleet.
